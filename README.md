@@ -15,6 +15,8 @@ You paste a GitHub URL. The agent clones the repo, walks through every Python fu
 - Which file and function it came from
 
 Comments below 50% confidence are separated into a "Verify This" section — because not every LLM output should be trusted blindly.
+ 
+NOTE: conidence scores depends on the LLM used, so it varies depending on LLM used.
 
 ---
 
@@ -72,6 +74,11 @@ Create a `.env` file in the root folder:
 GROQ_API_KEY=your_groq_api_key_here
 ```
 Get a free Groq API key at [console.groq.com](https://console.groq.com)
+
+**5. Streamlit Dashboard**
+'''
+streamlit run app.py
+'''
 
 ---
 
