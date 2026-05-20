@@ -5,7 +5,7 @@ Paste a public GitHub repo URL. The agent clones it, reads every function and cl
 Supports **Python** and **Java** repositories.
 
 Live app: [https://ai-code-review-agents.streamlit.app/](https://ai-code-review-agents.streamlit.app/)
-
+Demo Video: [https://www.loom.com/share/6a8e335b47894d1f9ff6f94cebf8cb80](https://www.loom.com/share/6a8e335b47894d1f9ff6f94cebf8cb80)
 ---
 
 ## What it does
