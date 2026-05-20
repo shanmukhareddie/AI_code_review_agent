@@ -44,10 +44,7 @@ st.divider()
 # ── Input section 
 st.markdown(
     "💡 **Only public repositories are supported.** "
-    "Private repos require authentication which is not available here.\n\n"
-    "**Examples:** `https://github.com/psf/requests` &nbsp;|&nbsp; "
-    "`https://github.com/pallets/flask` &nbsp;|&nbsp; "
-    "`https://github.com/google/guava` (Java)"
+    "Private repos require authentication which is not available here."
 )
 
 github_url = st.text_input(
