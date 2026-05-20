@@ -1,36 +1,23 @@
-import os
 from agent.ingestion import clone_repo
 from agent.parser import parse_all_files
 from agent.reviewer import review_chunk
 
 
-def run_pipeline(github_url: str, max_chunks: int = 50, max_lines_per_chunk: int = 100) -> list:
-    """
-    Full pipeline: clone -> parse -> review -> return all comments.
-    """
-    all_comments = []
-
-
-    print("[1/3] Cloning repository...")
+def run_pipeline(github_url: str, max_chunks: int = 50, max_lines_per_chunk: int = 100):
+    print("[1/3] Cloning repo...")
     source_files = clone_repo(github_url)
 
-
-    print("[2/3] Parsing source files (Python + Java)...")
+    print("[2/3] Parsing files...")
     chunks = parse_all_files(source_files, max_lines_per_chunk=max_lines_per_chunk)
+    total_found = len(chunks) # save total before slicing
+    chunks = chunks[:max_chunks] # limit to avoid too many API calls
 
-    # Limit chunks to avoid too many API calls
-    total_found = len(chunks)
-    chunks = chunks[:max_chunks]
-    print(
-        "Reviewing " + str(len(chunks)) + " chunks "
-        "(found " + str(total_found) + ", limited to " + str(max_chunks) + ")..."
-    )
-
-    print("[3/3] Sending chunks to LLM for review...")
+    print("[3/3] Reviewing " + str(len(chunks)) + " chunks...")
+    all_comments = []
     for i, chunk in enumerate(chunks):
-        print("  Reviewing " + str(i + 1) + "/" + str(len(chunks)) + ": " + chunk["name"] + "...")
+        print("  " + str(i + 1) + "/" + str(len(chunks)) + ": " + chunk["name"])
         comments = review_chunk(chunk)
         all_comments.extend(comments)
 
-    print("Done! Total comments generated: " + str(len(all_comments)))
+    print("Done! Total comments: " + str(len(all_comments)))
     return all_comments, total_found
