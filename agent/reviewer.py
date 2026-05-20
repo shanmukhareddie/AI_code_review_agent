@@ -6,7 +6,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+def get_groq_client():
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY secret is not set in Streamlit Cloud")
+    return Groq(api_key=api_key)
 
 SYSTEM_PROMPT = (
     "You are an expert Python code reviewer. Analyze the given code and return a JSON object "
@@ -41,7 +45,7 @@ def review_chunk(chunk: dict) -> list:
     )
 
     try:
-        response = client.chat.completions.create(
+        response = get_groq_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
