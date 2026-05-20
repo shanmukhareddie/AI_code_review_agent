@@ -19,7 +19,7 @@ def get_groq_client():
 
 
 SYSTEM_PROMPT = (
-    "You are an expert Python code reviewer. Analyze the given code and return a JSON object "
+    "You are an expert code reviewer for Python and Java. Analyze the given code and return a JSON object "
     "with a key 'comments' containing an array of review comments.\n\n"
     "Each comment must have exactly these fields:\n"
     "- 'issue': short title (string, max 10 words)\n"
@@ -42,8 +42,9 @@ def review_chunk(chunk: dict) -> list:
     """
     Sends a single code chunk to the LLM and returns structured review comments.
     """
+    language = chunk.get("language", "code")
     user_message = (
-        "Review this Python " + chunk["type"] +
+        "Review this " + language + " " + chunk["type"] +
         " named '" + chunk["name"] +
         "' from file '" + chunk["file"] +
         "' (starting at line " + str(chunk["line"]) + "):\n\n" +
@@ -66,16 +67,15 @@ def review_chunk(chunk: dict) -> list:
         parsed = json.loads(raw)
         comments = parsed.get("comments", [])
 
-        # Attach metadata to each comment
         for comment in comments:
             comment["file"] = chunk["file"]
             comment["function"] = chunk["name"]
             comment["chunk_type"] = chunk["type"]
+            comment["language"] = language
 
         return comments
 
     except RuntimeError:
-        # Re-raise API key errors so they bubble up clearly
         raise
     except json.JSONDecodeError as e:
         print("JSON parse error for " + chunk["name"] + ": " + str(e))
@@ -91,6 +91,7 @@ if __name__ == "__main__":
         "type": "function",
         "file": "math_utils.py",
         "line": 1,
+        "language": "python",
         "source": "def divide(a, b):\n    return a / b"
     }
     results = review_chunk(test_chunk)

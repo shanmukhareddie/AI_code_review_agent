@@ -52,19 +52,26 @@ def clone_repo(github_url: str, dest_dir: str = "repos/cloned_repo") -> list:
                 "- The repository exists on GitHub"
             )
 
-    # Collect all .py files, skip hidden folders
-    py_files = []
+    # Collect all supported source files, skip hidden folders
+    source_files = []
+    supported_extensions = (".py", ".java")
+
     for root, dirs, files in os.walk(dest_dir):
         dirs[:] = [d for d in dirs if not d.startswith('.')]
         for file in files:
-            if file.endswith(".py"):
-                py_files.append(os.path.join(root, file))
+            if file.endswith(supported_extensions):
+                source_files.append(os.path.join(root, file))
 
-    if not py_files:
+    if not source_files:
         raise ValueError(
-            "⚠️ No Python files found in this repository. "
-            "This tool only reviews Python (.py) files."
+            "⚠️ No supported source files found in this repository. "
+            "This tool currently reviews Python (.py) and Java (.java) files."
         )
 
-    print("Found " + str(len(py_files)) + " Python file(s).")
-    return py_files
+    py_count = sum(1 for f in source_files if f.endswith(".py"))
+    java_count = sum(1 for f in source_files if f.endswith(".java"))
+    print(
+        "Found " + str(len(source_files)) + " supported file(s). "
+        "Python: " + str(py_count) + ", Java: " + str(java_count)
+    )
+    return source_files
