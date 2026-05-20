@@ -5,6 +5,7 @@ import json
 import csv
 import io
 from dotenv import load_dotenv
+from agent.github_poster import post_review_to_pr, parse_pr_url
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 load_dotenv()
@@ -297,3 +298,68 @@ if "comments" in st.session_state:
                 "The AI is less certain about these — please review them manually."
             )
             render_comments(low_conf, show_verify_label=True)
+
+# ── GitHub PR Posting (Bonus) ──────────────────────────────────────────────────
+if "comments" in st.session_state and st.session_state["comments"]:
+    st.divider()
+    st.subheader("🔗 Post Review to GitHub Pull Request (Bonus)")
+    st.markdown(
+        "Post the review comments directly as a comment on a GitHub Pull Request. "
+        "Only comments with **confidence ≥50%** will be posted.\n\n"
+        "💡 You need a **GitHub Personal Access Token** with `repo` scope. "
+        "[Generate one here](https://github.com/settings/tokens/new?scopes=repo&description=AI+Code+Review+Agent) "
+        "(check the `repo` checkbox)."
+    )
+
+    pr_col1, pr_col2 = st.columns(2)
+
+    with pr_col1:
+        pr_url = st.text_input(
+            "🔗 GitHub Pull Request URL",
+            placeholder="https://github.com/owner/repo/pull/123",
+            help="The full URL of the pull request you want to post the review to."
+        )
+
+    with pr_col2:
+        github_token = st.text_input(
+            "🔑 GitHub Personal Access Token",
+            type="password",
+            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx",
+            help=(
+                "A GitHub PAT with 'repo' scope. "
+                "This is used only to post the review comment and is never stored."
+            )
+        )
+
+    only_high_conf = st.checkbox(
+        "Only post high-confidence comments (≥50%)",
+        value=True,
+        help="Recommended: uncheck only if you want to post ALL comments including uncertain ones."
+    )
+
+    post_button = st.button("🚀 Post Review to PR", type="primary", use_container_width=True)
+
+    if post_button:
+        if not pr_url.strip():
+            st.error("❌ Please enter a GitHub Pull Request URL.")
+        elif not github_token.strip():
+            st.error("❌ Please enter your GitHub Personal Access Token.")
+        else:
+            with st.spinner("⏳ Posting review comments to GitHub PR..."):
+                try:
+                    count, pr_link = post_review_to_pr(
+                        github_token=github_token.strip(),
+                        pr_url=pr_url.strip(),
+                        comments=st.session_state["comments"],
+                        only_high_confidence=only_high_conf
+                    )
+                    st.success(
+                        "✅ Successfully posted **" + str(count) + "** review comment(s) to the PR!"
+                    )
+                    st.markdown("🔗 [View the PR on GitHub](" + pr_link + ")")
+                except ValueError as e:
+                    st.error(str(e))
+                except RuntimeError as e:
+                    st.error("❌ " + str(e))
+                except Exception as e:
+                    st.error("❌ Unexpected error: " + str(e))
