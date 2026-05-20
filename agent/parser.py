@@ -4,11 +4,12 @@ import re
 from typing import List, Dict
 
 
-# ── Python Parser ────────────────────────────────────────────────────────────
 
-def parse_python_file(filepath: str) -> List[Dict]:
+
+def parse_python_file(filepath: str, max_lines: int = 100) -> List[Dict]:
     """
     Parses a Python file using AST and extracts functions and classes.
+    Skips any chunk longer than max_lines.
     """
     try:
         with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
@@ -24,6 +25,7 @@ def parse_python_file(filepath: str) -> List[Dict]:
         return []
 
     chunks = []
+    skipped = []
     lines = source.splitlines()
 
     for node in ast.walk(tree):
@@ -33,8 +35,9 @@ def parse_python_file(filepath: str) -> List[Dict]:
             end = node.end_lineno
             node_source = "\n".join(lines[start:end])
 
-            if (end - start) > 100:
-                print("Skipping " + node.name + " in " + filepath + " — too large (" + str(end - start) + " lines)")
+            if (end - start) > max_lines:
+                skipped.append(node.name)
+                print("Skipping " + node.name + " in " + filepath + " — too large (" + str(end - start) + " lines, limit: " + str(max_lines) + ")")
                 continue
 
             chunks.append({
@@ -49,13 +52,12 @@ def parse_python_file(filepath: str) -> List[Dict]:
     return chunks
 
 
-# ── Java Parser ──────────────────────────────────────────────────────────────
 
-def parse_java_file(filepath: str) -> List[Dict]:
+
+def parse_java_file(filepath: str, max_lines: int = 100) -> List[Dict]:
     """
-    Parses a Java file using regex to extract classes and methods.
-    Since Python has no built-in Java AST, we use brace-matching to
-    extract the full body of each class and method.
+    Parses a Java file using regex + brace-matching to extract classes and methods.
+    Skips any chunk longer than max_lines.
     """
     try:
         with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
@@ -64,10 +66,8 @@ def parse_java_file(filepath: str) -> List[Dict]:
         print("Could not read " + filepath + ": " + str(e))
         return []
 
-    lines = source.splitlines()
     chunks = []
 
-    # Regex patterns for Java class and method declarations
     class_pattern = re.compile(
         r'^\s*(?:public|private|protected)?\s*(?:abstract|final|static)?\s*'
         r'class\s+(\w+)\s*(?:extends\s+\w+)?\s*(?:implements\s+[\w,\s]+)?\s*\{',
@@ -80,10 +80,6 @@ def parse_java_file(filepath: str) -> List[Dict]:
     )
 
     def extract_block(src: str, start_pos: int) -> str:
-        """
-        Given the position of the opening brace, extract the full block
-        by counting matching braces.
-        """
         brace_pos = src.find("{", start_pos)
         if brace_pos == -1:
             return ""
@@ -100,67 +96,48 @@ def parse_java_file(filepath: str) -> List[Dict]:
     def get_line_number(src: str, pos: int) -> int:
         return src[:pos].count("\n") + 1
 
-    # Extract classes
     for match in class_pattern.finditer(source):
         name = match.group(1)
         block = extract_block(source, match.start())
         line_num = get_line_number(source, match.start())
         line_count = block.count("\n")
-
-        if line_count > 100:
-            print("Skipping class " + name + " in " + filepath + " — too large (" + str(line_count) + " lines)")
+        if line_count > max_lines:
+            print("Skipping class " + name + " — too large (" + str(line_count) + " lines, limit: " + str(max_lines) + ")")
             continue
-
         if block:
-            chunks.append({
-                "name": name,
-                "type": "class",
-                "source": block,
-                "line": line_num,
-                "file": filepath,
-                "language": "java"
-            })
+            chunks.append({"name": name, "type": "class", "source": block,
+                           "line": line_num, "file": filepath, "language": "java"})
 
-    # Extract methods
     for match in method_pattern.finditer(source):
         name = match.group(1)
-        # Skip constructor-like matches and common false positives
         if name in ("if", "for", "while", "switch", "catch", "try"):
             continue
         block = extract_block(source, match.start())
         line_num = get_line_number(source, match.start())
         line_count = block.count("\n")
-
-        if line_count > 100:
-            print("Skipping method " + name + " in " + filepath + " — too large (" + str(line_count) + " lines)")
+        if line_count > max_lines:
+            print("Skipping method " + name + " — too large (" + str(line_count) + " lines, limit: " + str(max_lines) + ")")
             continue
-
         if block:
-            chunks.append({
-                "name": name,
-                "type": "function",
-                "source": block,
-                "line": line_num,
-                "file": filepath,
-                "language": "java"
-            })
+            chunks.append({"name": name, "type": "function", "source": block,
+                           "line": line_num, "file": filepath, "language": "java"})
 
     return chunks
 
 
 # ── Combined Parser ──────────────────────────────────────────────────────────
 
-def parse_all_files(files: List[str]) -> List[Dict]:
+def parse_all_files(files: List[str], max_lines_per_chunk: int = 100) -> List[Dict]:
     """
     Runs the correct parser for each file based on extension.
-    Supports .py and .java files.
+    Supports .py and .java files. max_lines_per_chunk controls the size limit.
     """
     all_chunks = []
     for filepath in files:
         if filepath.endswith(".py"):
-            chunks = parse_python_file(filepath)
+            chunks = parse_python_file(filepath, max_lines=max_lines_per_chunk)
         elif filepath.endswith(".java"):
-            chunks = parse_java_file(filepath)
+            chunks = parse_java_file(filepath, max_lines=max_lines_per_chunk)
         else:
             continue
         all_chunks.extend(chunks)
@@ -177,5 +154,6 @@ if __name__ == "__main__":
     files = clone_repo("https://github.com/pallets/flask")
     chunks = parse_all_files(files)
     for chunk in chunks[:3]:
-        print("\n--- " + chunk["type"].upper() + ": " + chunk["name"] + " (line " + str(chunk["line"]) + ") [" + chunk["language"] + "] ---")
+        print("\n--- " + chunk["type"].upper() + ": " + chunk["name"] +
+              " (line " + str(chunk["line"]) + ") [" + chunk["language"] + "] ---")
         print(chunk["source"][:200])
