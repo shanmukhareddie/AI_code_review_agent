@@ -6,11 +6,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
 def get_groq_client():
+    """Create Groq client only when needed, with a clear error if key is missing."""
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
-        raise RuntimeError("GROQ_API_KEY secret is not set in Streamlit Cloud")
+        raise RuntimeError(
+            "GROQ_API_KEY is not set. "
+            "Add it in Streamlit Cloud under Settings → Secrets as: GROQ_API_KEY = \"your-key-here\""
+        )
     return Groq(api_key=api_key)
+
 
 SYSTEM_PROMPT = (
     "You are an expert Python code reviewer. Analyze the given code and return a JSON object "
@@ -45,7 +51,8 @@ def review_chunk(chunk: dict) -> list:
     )
 
     try:
-        response = get_groq_client().chat.completions.create(
+        client = get_groq_client()
+        response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -67,6 +74,9 @@ def review_chunk(chunk: dict) -> list:
 
         return comments
 
+    except RuntimeError:
+        # Re-raise API key errors so they bubble up clearly
+        raise
     except json.JSONDecodeError as e:
         print("JSON parse error for " + chunk["name"] + ": " + str(e))
         return []

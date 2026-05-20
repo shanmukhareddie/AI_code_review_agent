@@ -1,31 +1,49 @@
 import streamlit as st
-import pandas as pd
-import sys
 import os
+import sys
 from dotenv import load_dotenv
 
-
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+load_dotenv()
 
 from agent.pipeline import run_pipeline
+from agent.ingestion import is_valid_github_url
 
-# Page config
+# ── Page config ──────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Code Review Agent",
     page_icon="🔍",
     layout="wide"
 )
 
-# Header
+# ── Header ───────────────────────────────────────────────────────────────────
 st.title("🔍 AI Code Review Agent")
 st.markdown(
-    "Paste a **public Python GitHub repository** URL below. "
+    "Paste a **public** Python GitHub repository URL below. "
     "The agent will clone it, parse every function and class, "
     "and return structured review comments with confidence scores."
 )
+
+# ── API key guard ─────────────────────────────────────────────────────────────
+if not os.getenv("GROQ_API_KEY"):
+    st.error(
+        "🔒 **GROQ_API_KEY is not configured.**\n\n"
+        "To fix this on Streamlit Cloud:\n"
+        "1. Open your app dashboard\n"
+        "2. Click **Settings → Secrets**\n"
+        "3. Add: `GROQ_API_KEY = \"your-key-here\"`"
+    )
+    st.stop()
+
 st.divider()
 
-# Input section
+# ── Input section ─────────────────────────────────────────────────────────────
+st.markdown(
+    "💡 **Only public repositories are supported.** "
+    "Private repos require authentication which is not available here.\n\n"
+    "Example: `https://github.com/psf/requests` or `https://github.com/pallets/flask`"
+)
+
 github_url = st.text_input(
     "GitHub Repository URL",
     placeholder="https://github.com/username/repository"
@@ -45,45 +63,65 @@ with col2:
 
 run_button = st.button("🚀 Start Review", type="primary", use_container_width=True)
 
-# Run pipeline
+# ── Validation + Run ──────────────────────────────────────────────────────────
 if run_button:
     if not github_url.strip():
-        st.error("❌ Please enter a GitHub URL.")
-    elif not github_url.strip().startswith("https://github.com/"):
-        st.error("❌ Please enter a valid public GitHub URL starting with https://github.com/")
+        st.error("❌ Please enter a GitHub repository URL.")
     else:
-        with st.spinner("⏳ Cloning repo, parsing files, and reviewing code... this may take a minute."):
-            try:
-                comments = run_pipeline(github_url.strip(), max_chunks=max_chunks)
-                st.session_state["comments"] = comments
-                st.session_state["url"] = github_url.strip()
-            except ValueError as e:
-                st.error("Error: " + str(e))
-                st.stop()
-            except Exception as e:
-                st.error("Something went wrong: " + str(e))
-                st.stop()
+        valid, msg = is_valid_github_url(github_url.strip())
+        if not valid:
+            st.error(msg)
+        else:
+            with st.spinner("⏳ Cloning repo, parsing files, and reviewing code... this may take a minute."):
+                try:
+                    comments = run_pipeline(github_url.strip(), max_chunks=max_chunks)
+                    st.session_state["comments"] = comments
+                    st.session_state["url"] = github_url.strip()
+                except ValueError as e:
+                    st.error(str(e))
+                    st.stop()
+                except RuntimeError as e:
+                    st.error("🔒 " + str(e))
+                    st.stop()
+                except Exception as e:
+                    err = str(e).lower()
+                    if "exit code(128)" in err or "could not read username" in err or "authentication" in err:
+                        st.error(
+                            "🔒 **Private repository detected.**\n\n"
+                            "This tool only supports **public** GitHub repositories. "
+                            "Please enter a public repo URL."
+                        )
+                    else:
+                        st.error("❌ Something went wrong: " + str(e))
+                    st.stop()
 
-# Display results
+# ── Display results ───────────────────────────────────────────────────────────
 if "comments" in st.session_state:
     comments = st.session_state["comments"]
+    reviewed_url = st.session_state.get("url", "")
+
+    if reviewed_url:
+        st.caption("📎 Reviewing: " + reviewed_url)
 
     if not comments:
-        st.warning("⚠️ The agent ran but found no issues. Try increasing the max functions slider or use a different repo.")
+        st.warning(
+            "⚠️ The agent ran but found no issues. "
+            "Try increasing the max functions slider or use a different repo."
+        )
     else:
         st.success("✅ Review complete! Found **" + str(len(comments)) + "** comment(s).")
         st.divider()
 
-        # Filters
+        # ── Filters ───────────────────────────────────────────────────────────
         st.subheader("🔎 Filter Results")
         fcol1, fcol2 = st.columns(2)
 
         with fcol1:
-            severity_options = ["All"] + sorted(set(c.get("severity", "") for c in comments))
+            severity_options = ["All"] + sorted(set(c.get("severity", "") for c in comments if c.get("severity")))
             selected_severity = st.selectbox("Filter by Severity", severity_options)
 
         with fcol2:
-            category_options = ["All"] + sorted(set(c.get("category", "") for c in comments))
+            category_options = ["All"] + sorted(set(c.get("category", "") for c in comments if c.get("category")))
             selected_category = st.selectbox("Filter by Category", category_options)
 
         # Apply filters
@@ -96,22 +134,21 @@ if "comments" in st.session_state:
         st.markdown("Showing **" + str(len(filtered)) + "** of **" + str(len(comments)) + "** comment(s)")
         st.divider()
 
-        # Split by confidence
+        # ── Split by confidence ───────────────────────────────────────────────
         high_conf = [c for c in filtered if c.get("confidence", 0) >= 50]
         low_conf  = [c for c in filtered if c.get("confidence", 0) < 50]
 
-        # Tabs
         tab1, tab2 = st.tabs([
             "✅ Review Comments (" + str(len(high_conf)) + ")",
             "🔍 Verify This (" + str(len(low_conf)) + ")"
         ])
 
         def severity_emoji(s):
-            return {"‘critical’": "🔴", "critical": "🔴", "warning": "🟡", "suggestion": "🟢"}.get(s, "⚪")
+            return {"critical": "🔴", "warning": "🟡", "suggestion": "🟢"}.get(str(s).lower(), "⚪")
 
         def render_comments(comment_list, show_verify_label=False):
             if not comment_list:
-                st.info("No comments here.")
+                st.info("No comments in this category.")
                 return
             for c in comment_list:
                 confidence = c.get("confidence", 0)
@@ -127,9 +164,7 @@ if "comments" in st.session_state:
                     top_col, badge_col = st.columns([5, 1])
 
                     with top_col:
-                        label = ""
-                        if show_verify_label:
-                            label = " ⚠️ `VERIFY THIS`"
+                        label = " ⚠️ `VERIFY THIS`" if show_verify_label else ""
                         st.markdown(
                             severity_emoji(severity) +
                             " **" + issue + "**" +
@@ -139,41 +174,22 @@ if "comments" in st.session_state:
                         )
 
                     with badge_col:
-                        if confidence >= 80:
+                        if confidence >= 90:
                             st.success(str(confidence) + "%")
                         elif confidence >= 50:
                             st.warning(str(confidence) + "%")
                         else:
                             st.error(str(confidence) + "%")
 
-                    st.progress(confidence / 100)
                     st.markdown(desc)
-
-                    m1, m2, m3 = st.columns(3)
-                    with m1:
-                        st.caption("📄 " + fname)
-                    with m2:
-                        st.caption("⚙️ " + func)
-                    with m3:
-                        st.caption("📍 Line " + (str(line) if line else "unknown"))
+                    loc_line = ("  |  Line: " + str(line)) if line else ""
+                    st.caption("📄 " + fname + "  |  🔧 " + func + loc_line)
 
         with tab1:
             render_comments(high_conf, show_verify_label=False)
-
         with tab2:
-            st.warning("⚠️ These comments have low confidence (below 50%). The agent is uncertain — please verify manually before acting on them.")
-            render_comments(low_conf, show_verify_label=True)
-
-        # Download
-        st.divider()
-        st.subheader("📥 Download Results")
-        if filtered:
-            df = pd.DataFrame(filtered)
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="⬇️ Download filtered results as CSV",
-                data=csv,
-                file_name="code_review_results.csv",
-                mime="text/csv",
-                use_container_width=True
+            st.info(
+                "⚠️ These comments have a confidence score below 50%. "
+                "The AI is less certain about these — please review them manually."
             )
+            render_comments(low_conf, show_verify_label=True)
