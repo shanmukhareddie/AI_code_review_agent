@@ -1,13 +1,14 @@
 import os
 import shutil
 import git
+from typing import Tuple
 from dotenv import load_dotenv
 
 
 load_dotenv()
 
 
-def is_valid_github_url(url: str) -> tuple[bool, str]:
+def is_valid_github_url(url: str) -> Tuple[bool, str]:
     """Validate the GitHub URL before attempting to clone."""
     if not url.startswith("https://github.com/"):
         return False, "❌ Please enter a valid GitHub URL starting with https://github.com/"
