@@ -294,3 +294,53 @@ if "comments" in st.session_state:
                 "The AI is less certain about these — please review them manually."
             )
             render_comments(low_conf, show_verify_label=True)
+
+# ── GitHub PR Posting (Bonus) ──────────────────────────────────────────
+if "comments" in st.session_state and st.session_state["comments"]:
+    st.divider()
+    st.subheader("🔗 Post Review to GitHub Pull Request (Bonus)")
+    st.markdown(
+        "Post the review directly as a comment on a GitHub Pull Request. "
+        "Only comments with **confidence ≥50%** will be posted.\n\n"
+        "💡 You need a **GitHub Personal Access Token** with `repo` scope. "
+        "[Generate one here](https://github.com/settings/tokens/new?scopes=repo&description=AI+Code+Review+Agent)."
+    )
+
+    pr_col1, pr_col2 = st.columns(2)
+    with pr_col1:
+        pr_url = st.text_input(
+            "🔗 GitHub Pull Request URL",
+            placeholder="https://github.com/owner/repo/pull/1"
+        )
+    with pr_col2:
+        github_token = st.text_input(
+            "🔑 GitHub Personal Access Token",
+            type="password",
+            placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
+        )
+
+    only_high_conf = st.checkbox("Only post high-confidence comments (≥50%)", value=True)
+
+    if st.button("🚀 Post Review to PR", type="primary", use_container_width=True):
+        if not pr_url.strip():
+            st.error("❌ Please enter a GitHub Pull Request URL.")
+        elif not github_token.strip():
+            st.error("❌ Please enter your GitHub Personal Access Token.")
+        else:
+            with st.spinner("⏳ Posting review to GitHub PR..."):
+                try:
+                    from agent.github_poster import post_review_to_pr
+                    count, pr_link = post_review_to_pr(
+                        github_token=github_token.strip(),
+                        pr_url=pr_url.strip(),
+                        comments=st.session_state["comments"],
+                        only_high_confidence=only_high_conf
+                    )
+                    st.success("✅ Posted **" + str(count) + "** comment(s) to the PR!")
+                    st.markdown("🔗 [View the PR on GitHub](" + pr_link + ")")
+                except ValueError as e:
+                    st.error(str(e))
+                except RuntimeError as e:
+                    st.error("❌ " + str(e))
+                except Exception as e:
+                    st.error("❌ Unexpected error: " + str(e))
